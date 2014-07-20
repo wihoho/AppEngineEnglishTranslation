@@ -17,10 +17,11 @@
 from datetime import datetime
 import webapp2
 import jinja2
-from google.appengine.ext import db
+from google.appengine.ext import ndb
 
-from Entity import Page, Article
+from Entity import Article
 from translate import translate
+import time
 
 JINJA_ENVIRONMENT = jinja2.Environment(
     loader=jinja2.FileSystemLoader('templates'),
@@ -33,14 +34,23 @@ class MainHandler(webapp2.RequestHandler):
         lst = [1,2,3]
         dict = {"lst": lst}
 
-        q = Page.all()
-        q.order("-issueDate")
+        q = Article.query().order(-Article.issueDate).order(Article.pageNumber)
+        dict = {}
 
-        for p in q.run():
-            print p
+        for p in q:
+            keys = dict.keys()
+            if p.issueDate not in keys:
+                lst = []
+                lst.append(p)
+                dict[p.issueDate] = lst
+            else:
+                dict[p.issueDate].append(p)
 
-        template = JINJA_ENVIRONMENT.get_template('add.html')
-        self.response.write(template.render(dict))
+        allDates = sorted(dict.keys(), reverse=True)
+        result = {'issueDates': allDates, 'content': dict }
+
+        template = JINJA_ENVIRONMENT.get_template('index.html')
+        self.response.write(template.render(result))
 
 class addHandler(webapp2.RequestHandler):
     def post(self):
@@ -67,42 +77,36 @@ class addHandler(webapp2.RequestHandler):
             chineseTranslation.append(t)
             finalEnglishWords.append(word)
 
-        # Find respective Page entity
-        page_k = db.Key.from_path('Page', issue+page)
-        page = db.get(page_k)
-        if not page:
-            newPage = Page(key_name=issue+page)
-            newPage.issueDate = datetime.strptime(issue, '%Y%m%d')
-            newPage.pageNumber = int(page)
-            newPage.put()
-            page = newPage
-
-        # Find respective Article entity
-        article_k = db.Key.from_path('Page', issue+page, 'Article', title)
-        article = db.get(article_k)
-        if not article:
-            article = Article(parent=page, key_name=title)
-
-        if article.englishWords:
-            for i in range(len(finalEnglishWords)):
-                currentWord = finalEnglishWords[i]
-                if not currentWord in article.englishWords:
-                    article.englishWords.append(currentWord)
-                    article.chineseWords.append(chineseTranslation[i])
-                    article.phonetics.append(phonetics[i])
-        else:
+        # Find relevant page
+        issueDate = datetime.strptime(issue, '%Y%m%d')
+        q = Article.query(ndb.AND(ndb.AND(Article.issueDate == issueDate, Article.pageNumber == int(page)), Article.passageTitle == title))
+        if q.count() == 0:
+            article = Article()
+            article.issueDate = issueDate
+            article.pageNumber = int(page)
             article.passageTitle = title
             article.englishWords = finalEnglishWords
-            article.chineseWords = chineseTranslation
             article.phonetics = phonetics
+            article.chineseWords = chineseTranslation
 
-        article.updateDate = datetime.now().date()
-        article.put()
+            article.put()
+        else:
+            tempArticle = q.fetch()[0]
+            for i in range(len(finalEnglishWords)):
+                singleWorld = finalEnglishWords[i]
+                if singleWorld not in tempArticle.englishWords:
+                    tempArticle.englishWords.append(singleWorld)
+                    tempArticle.phonetics.append(phonetics[i])
+                    tempArticle.chineseWords.append(chineseTranslation[i])
 
-        print page
-        print article
+            tempArticle.put()
 
-        self.redirect('/index')
+        time.sleep(0.1)
+        self.redirect('/index', permanent=True)
+
+    def get(self):
+        template = JINJA_ENVIRONMENT.get_template('insert.html')
+        self.response.write(template.render())
 
 
 
@@ -112,4 +116,8 @@ appIndex = webapp2.WSGIApplication([
 
 appAdd = webapp2.WSGIApplication([
     ('/add', addHandler)
+], debug=True)
+
+appMain = webapp2.WSGIApplication([
+    ('/', MainHandler)
 ], debug=True)

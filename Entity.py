@@ -1,21 +1,19 @@
 __author__ = 'GongLi'
 
-from google.appengine.ext import db
+from google.appengine.ext import ndb
 
-class Page(db.Model):
+class Article(ndb.Model):
 
-    issueDate = db.DateProperty()
-    pageNumber = db.IntegerProperty()
+    issueDate = ndb.DateProperty()
+    pageNumber = ndb.IntegerProperty()
 
-class Article(db.Model):
+    passageTitle = ndb.StringProperty()
 
-    passageTitle = db.StringProperty()
+    englishWords = ndb.StringProperty(repeated=True)
+    phonetics = ndb.StringProperty(repeated=True)
+    chineseWords = ndb.StringProperty(repeated=True)
 
-    englishWords = db.JsonProperty()
-    phonetics = db.JsonProperty()
-    chineseWords = db.JsonProperty()
-
-    updateDate = db.DateTimeProperty()
+    updateDate = ndb.DateTimeProperty(auto_now=True)
 
 
 
